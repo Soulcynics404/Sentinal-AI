@@ -1,0 +1,16 @@
+[Unit]
+Description=SENTINEL Personal Security System
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=soulcynic
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/soulcynic/.Xauthority
+ExecStart=/home/soulcynic/sentinel/sentinel --guard
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target
