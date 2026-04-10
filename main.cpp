@@ -140,7 +140,7 @@ static Config g_config;
 static std::atomic<bool> g_running{true};
 
 // ═══════════════════════════════════════
-// Logger (unchanged)
+// Logger
 // ═══════════════════════════════════════
 class Logger {
 public:
@@ -329,7 +329,7 @@ private:
 #define CSV_LOG(...) CSVLogger::inst().log(__VA_ARGS__)
 
 // ═══════════════════════════════════════
-// Telegram (unchanged)
+// Telegram Integration
 // ═══════════════════════════════════════
 class Telegram {
 public:
@@ -965,8 +965,6 @@ std::atomic<int> TelegramBot::recording_seconds{30};
 // END OF PART 2
 // Part 3 starts with TamperDetector
 // ═══════════════════════════════════════
-// ═══════════════════════════════════════
-// (Continuing from Part 2)
 // ═══════════════════════════════════════
 
 class TamperDetector {
@@ -1796,7 +1794,7 @@ private:
 };
 
 // ═══════════════════════════════════════
-// Test Mode (unchanged)
+// Test Mode
 // ═══════════════════════════════════════
 void runTest(FaceEngine& engine, int camIdx) {
     LOG_INFO("Test Mode — 'q' to quit");
