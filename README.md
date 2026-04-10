@@ -1,3 +1,14 @@
+## 👤 Author
+
+**Soulcynics404**
+
+- GitHub: [@Soulcynics404](https://github.com/Soulcynics404)
+- Repository: [Sentinal-AI](https://github.com/Soulcynics404/Sentinal-AI)
+
+---
+
+## ⭐ Star this repo if you find it useful!
+
 # 🛡️ SENTINEL AI — Personal Security System
 
 ![Version](https://img.shields.io/badge/version-3.2-blue)

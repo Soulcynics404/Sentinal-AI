@@ -1,4 +1,13 @@
 #!/bin/bash
+#!/bin/bash
+# ═══════════════════════════════════════════════════════
+# SENTINEL AI — Interactive Setup
+#
+# Author:  Soulcynics404
+# GitHub:  https://github.com/Soulcynics404
+# Repo:    https://github.com/Soulcynics404/Sentinal-AI
+# License: MIT
+# ═══════════════════════════════════════════════════════
 # SENTINEL Setup — Interactive Configuration
 
 RED='\033[0;31m'

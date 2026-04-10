@@ -1,5 +1,12 @@
 /*
- * SENTINEL v3.2 Phase 3.2
+ * SENTINEL AI v3.2 Phase 3.2
+ * Personal AI Security System
+ *
+ * Author:  Soulcynics404
+ * GitHub:  https://github.com/Soulcynics404
+ * Repo:    https://github.com/Soulcynics404/Sentinal-AI
+ * License: MIT
+ *
  * Features: Face Recognition, Kill Switch, Telegram Bot, Temp Access,
  *           Video Recording, Continuous Monitoring, Auto-start,
  *           CSV Activity Log
