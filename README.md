@@ -66,7 +66,7 @@
 ### Automatic Setup (Recommended)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sentinel-ai.git
+git clone https://github.com/Soulcynics404/sentinel-ai.git
 cd sentinel-ai
 chmod +x setup.sh reset.sh
 ./setup.sh
