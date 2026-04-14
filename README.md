@@ -182,3 +182,4 @@ git clone https://github.com/Soulcynics404/Sentinal-AI.git
 cd Sentinal-AI
 chmod +x setup.sh reset.sh
 ./setup.sh
+```
