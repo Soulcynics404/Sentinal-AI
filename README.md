@@ -51,7 +51,7 @@
 - **Smart Multi-Person** — Popup instead of instant lock
 
 </td>
-<td width="50%">
+<td width="40%">
 
 ### 🔑 Kill Switch System
 - **3 Security Questions** — All must be correct
