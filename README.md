@@ -113,45 +113,41 @@
 
 ## 🏗 System Architecture
 
-> **To create the architecture diagram:**
-> Save the diagram from [Eraser.io](https://eraser.io) as `docs/architecture.png` and uncomment the line below.
 
-<!-- ![SENTINEL Architecture](docs/architecture.png) -->
+![SENTINEL Architecture](docs/architecture.png)
 
 <details>
 <summary><b>📐 Click to view architecture flow (text)</b></summary>
-
 ┌──────────────────────────────────────────────────────────────┐
-│               SENTINEL AI v3.3                               │
-│               Personal Security System                       │
+│ SENTINEL AI v3.3 │
+│ Personal Security System │
 ├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ 📷 CAMERA ──→ 🧠 FACE ENGINE (dlib ResNet + HOG)             │
-│                    │                                         │
-│     ┌──────────────┼──────────────────┐                      │
-│                  ▼ ▼ ▼                                       │
-│       (SECURE) (THREAT) (Smart Popup)                        │
-│       ✅ Owner 🔴 Unknown 👥 Multiple                        │
-│       │            │            │                            │
-│       │            ▼            ▼                            │
-│       │ 🔒 LOCK ◄──── Lock/Dismiss/Suppress                  │
-│       │            │                                         │
-│       │            ▼                                         │
-│       │ ┌─────────────────────┐                              │
-│       │ │ VERIFICATION POPUP  │                              │
-│       │ │ Face │ KillSwitch │ │                              │
-│       │ │ TempAccess        │ │                              │ 
-│       │ └─────────┬─────────┘                                │
-│       │           │                                          │
-│       ▼           ▼                                          │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
-│ │📱Telegram│ │📊CSV Log │ │💾Storage │ │📸Evidence│          │
-│ │ 27+ cmds │ │16 columns│ │ .dat     │ │ Photos   │          │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+│ │
+│ 📷 CAMERA ──→ 🧠 FACE ENGINE (dlib ResNet + HOG) │
+│ │ │
+│ ┌──────────────┼──────────────────┐ │
+│ ▼ ▼ ▼ │
+│ ✅ Owner 🔴 Unknown 👥 Multiple │
+│ (SECURE) (THREAT) (Smart Popup) │
+│ │ │ │ │
+│ │ ▼ ▼ │
+│ │ 🔒 LOCK ◄──── Lock/Dismiss/Suppress │
+│ │ │ │
+│ │ ▼ │
+│ │ ┌─────────────────────┐ │
+│ │ │ VERIFICATION POPUP │ │
+│ │ │ Face │ KillSwitch │ │ │
+│ │ │ TempAccess │ │ │
+│ │ └─────────┬─────────┘ │
+│ │ │ │
+│ ▼ ▼ │
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│ │📱Telegram│ │📊CSV Log │ │💾Storage │ │📸Evidence│ │
+│ │ 27+ cmds │ │16 columns│ │ .dat │ │ Photos │ │
+│ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
 ├──────────────────────────────────────────────────────────────┤
-│ ⚙️ systemd auto-start │ setup.sh │ reset.sh                  │
+│ ⚙️ systemd auto-start │ setup.sh │ reset.sh │
 └──────────────────────────────────────────────────────────────┘
-
 </details>
 
 ---
