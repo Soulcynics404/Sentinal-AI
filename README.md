@@ -59,6 +59,7 @@
 - **Security Bypass** — Temp bypass after correct answers
 - **Hash Verification** — Answers stored as hashes
 
+
 </td>
 </tr>
 <tr>
@@ -83,6 +84,7 @@
 - **Video Recording** — On-demand via Telegram
 - **Export** — Download CSV via Telegram or terminal
 
+
 </td>
 </tr>
 <tr>
@@ -94,6 +96,7 @@
 - 3rd+ alert: Lock, Dismiss, or Suppress
 - Suppress mode: No popups, still tracks owner
 - Owner leaves during suppress → Instant lock
+
 
 </td>
 <td>
