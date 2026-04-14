@@ -42,7 +42,7 @@
 
 <table>
 <tr>
-<td width="40%">
+<td width="50%">
 
 ### 🔐 Core Security
 - **Real-time Face Recognition** — dlib ResNet 128D embeddings
@@ -51,7 +51,7 @@
 - **Smart Multi-Person** — Popup instead of instant lock
 
 </td>
-<td width="40%">
+<td width="50%">
 
 ### 🔑 Kill Switch System
 - **3 Security Questions** — All must be correct
