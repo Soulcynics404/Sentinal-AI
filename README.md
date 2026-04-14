@@ -129,24 +129,24 @@
 │                    │                                         │
 │     ┌──────────────┼──────────────────┐                      │
 │                  ▼ ▼ ▼                                       │
-│       (SECURE) (THREAT) (Smart Popup)                        │
-│       ✅ Owner 🔴 Unknown 👥 Multiple                        │
-│       │            │            │                            │
-│       │            ▼            ▼                            │
-│       │ 🔒 LOCK ◄──── Lock/Dismiss/Suppress                  │
-│       │            │                                         │
-│       │            ▼                                         │
-│       │ ┌─────────────────────┐                              │
-│       │ │ VERIFICATION POPUP  │                              │
-│       │ │ Face │ KillSwitch │ │                              │
-│       │ │ TempAccess        │ │                              │ 
-│       │ └─────────┬─────────┘                                │
-│       │           │                                          │
-│       ▼           ▼                                          │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
-│ │📱Telegram│ │📊CSV Log │ │💾Storage │ │📸Evidence│          │
-│ │ 27+ cmds │ │16 columns│ │ .dat     │ │ Photos   │          │
-│ └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+│      (SECURE)   (THREAT)  (Smart Popup)                      │
+│      ✅ Owner 🔴 Unknown   👥 Multiple                       │
+│         │            │            │                          │
+│         │            ▼            ▼                          │
+│         │ 🔒 LOCK ◄──── Lock/Dismiss/Suppress                │
+│         │            │                                       │
+│         │            ▼                                       │
+│         │ ┌─────────────────────┐                            │
+│         │ │ VERIFICATION POPUP  │                            │
+│         │ │ Face │ KillSwitch   │                            │
+│         │ │ TempAccess          │                            │ 
+│         │ └─────────┬───────────┘                            │
+│         │           │                                        │
+│         ▼           ▼                                        │
+│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│   │📱Telegram│ │📊CSV Log │ │💾Storage │ │📸Evidence│        │
+│   │ 27+ cmds │ │16 columns│ │ .dat     │ │ Photos   │        │
+│   └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
 ├──────────────────────────────────────────────────────────────┤
 │ ⚙️ systemd auto-start │ setup.sh │ reset.sh                  │
 └──────────────────────────────────────────────────────────────┘
