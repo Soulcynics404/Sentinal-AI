@@ -42,7 +42,7 @@
 
 <table>
 <tr>
-<td width="50%">
+<td width="40%">
 
 ### 🔐 Core Security
 - **Real-time Face Recognition** — dlib ResNet 128D embeddings
