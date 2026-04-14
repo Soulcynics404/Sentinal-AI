@@ -77,7 +77,7 @@ case "$CHOICE" in
     4)
         echo ""
         echo -e "${BOLD}Current values:${NC}"
-        grep -E "^(noface_lock|verification_timeout|killswitch_timeout|security_disable|face_threshold|consecutive_unknown|lock_cooldown|tamper_frames)" "$CONF_FILE" 2>/dev/null
+        grep -E "^(noface_lock|verification_timeout|killswitch_timeout|security_disable|face_threshold|consecutive_unknown|lock_cooldown|tamper_frames|multiface_suppress)" "$CONF_FILE" 2>/dev/null
         echo ""
 
         echo -e "${BOLD}What to change?${NC}"
@@ -89,9 +89,10 @@ case "$CHOICE" in
         echo "  f) Unknown frames before lock"
         echo "  g) Lock cooldown (seconds)"
         echo "  h) Tamper frames before lock"
+        echo "  j) Multi-face suppress duration (minutes)"
         echo "  i) Change ALL"
         echo ""
-        read -p "  Choose [a-i]: " TIMER_CHOICE
+        read -p "  Choose [a-j]: " TIMER_CHOICE
 
         case "$TIMER_CHOICE" in
             a)
@@ -126,6 +127,10 @@ case "$CHOICE" in
                 read -p "  Tamper frames [current: $(grep tamper_frames_before_lock "$CONF_FILE" | cut -d= -f2)]: " VAL
                 [ -n "$VAL" ] && update_conf "tamper_frames_before_lock" "$VAL"
                 ;;
+            j)
+                read -p "  Multi-face suppress minutes [current: $(grep multiface_suppress_minutes "$CONF_FILE" | cut -d= -f2)]: " VAL
+                [ -n "$VAL" ] && update_conf "multiface_suppress_minutes" "$VAL"
+                ;;
             i)
                 read -p "  No-face lock seconds: " V; [ -n "$V" ] && update_conf "noface_lock_seconds" "$V"
                 read -p "  Verification timeout: " V; [ -n "$V" ] && update_conf "verification_timeout" "$V"
@@ -135,6 +140,7 @@ case "$CHOICE" in
                 read -p "  Unknown frames: " V; [ -n "$V" ] && update_conf "consecutive_unknown_frames" "$V"
                 read -p "  Lock cooldown: " V; [ -n "$V" ] && update_conf "lock_cooldown_seconds" "$V"
                 read -p "  Tamper frames: " V; [ -n "$V" ] && update_conf "tamper_frames_before_lock" "$V"
+                read -p "  Multi-face suppress minutes: " V; [ -n "$V" ] && update_conf "multiface_suppress_minutes" "$V"
                 ;;
         esac
         echo -e "${YELLOW}  Restart sentinel for changes to take effect${NC}"

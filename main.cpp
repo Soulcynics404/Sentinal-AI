@@ -1,5 +1,5 @@
 /*
- * SENTINEL AI v3.2 Phase 3.2
+ * SENTINEL AI v3.3 Phase 3.3
  * Personal AI Security System
  *
  * Author:  Soulcynics404
@@ -9,7 +9,7 @@
  *
  * Features: Face Recognition, Kill Switch, Telegram Bot, Temp Access,
  *           Video Recording, Continuous Monitoring, Auto-start,
- *           CSV Activity Log
+ *           CSV Activity Log, Smart Multi-Person Detection
  */
 #include <iostream>
 #include <fstream>
@@ -72,7 +72,7 @@ namespace Color {
 struct Config {
     std::string base_dir,model_dir,data_dir,evidence_dir;
     std::string log_file,owner_face_file,config_file,security_file;
-    std::string csv_log_file;  // NEW: CSV activity log path
+    std::string csv_log_file;
     std::string shape_predictor_path,face_rec_model_path,haar_cascade_path;
     int camera_index=1,frame_skip=3;
     bool show_preview=false;
@@ -89,6 +89,7 @@ struct Config {
     int verification_timeout=30;
     int killswitch_timeout=120;
     int security_disable_minutes=30;
+    int multiface_suppress_minutes=20;  // NEW: Smart multi-person suppress duration
 
     void init(const std::string& exe) {
         base_dir=fs::path(exe).parent_path().string();
@@ -97,7 +98,7 @@ struct Config {
         evidence_dir=data_dir+"/evidence";log_file=base_dir+"/sentinel.log";
         owner_face_file=data_dir+"/owner_face.dat";config_file=base_dir+"/sentinel.conf";
         security_file=data_dir+"/security.dat";
-        csv_log_file=data_dir+"/sentinel_log.csv";  // NEW
+        csv_log_file=data_dir+"/sentinel_log.csv";
         shape_predictor_path=model_dir+"/shape_predictor_68_face_landmarks.dat";
         face_rec_model_path=model_dir+"/dlib_face_recognition_resnet_model_v1.dat";
         haar_cascade_path=model_dir+"/haarcascade_frontalface_default.xml";
@@ -132,6 +133,7 @@ struct Config {
             else if(k=="verification_timeout")verification_timeout=std::stoi(v);
             else if(k=="killswitch_timeout")killswitch_timeout=std::stoi(v);
             else if(k=="security_disable_minutes")security_disable_minutes=std::stoi(v);
+            else if(k=="multiface_suppress_minutes")multiface_suppress_minutes=std::stoi(v);
         }
     }
 };
@@ -140,7 +142,7 @@ static Config g_config;
 static std::atomic<bool> g_running{true};
 
 // ═══════════════════════════════════════
-// Logger
+// Logger (unchanged)
 // ═══════════════════════════════════════
 class Logger {
 public:
@@ -170,7 +172,7 @@ private:Logger()=default;std::mutex mtx;std::ofstream fi;
 #define LOG_SECURITY(m) Logger::inst().security(m)
 
 // ═══════════════════════════════════════
-// NEW: CSV Activity Logger
+// CSV Activity Logger (unchanged from v3.2)
 // ═══════════════════════════════════════
 class CSVLogger {
 public:
@@ -329,7 +331,7 @@ private:
 #define CSV_LOG(...) CSVLogger::inst().log(__VA_ARGS__)
 
 // ═══════════════════════════════════════
-// Telegram Integration
+// Telegram (unchanged)
 // ═══════════════════════════════════════
 class Telegram {
 public:
@@ -394,9 +396,7 @@ namespace SystemAction {
         if(system("i3lock -c 1a1a2e -e -f 2>/dev/null") == 0) return;
         system("xdotool key super+l 2>/dev/null");
     }
-    // ═══════════════════════════════════════
-// (Continuing from Part 1 — SystemAction::saveEvidence)
-// ═══════════════════════════════════════
+
     std::string saveEvidence(const cv::Mat& frame, const std::string& dir) {
         auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::tm buf;
@@ -414,7 +414,12 @@ namespace SystemAction {
 }
 
 // ═══════════════════════════════════════
-// Telegram Bot — Remote Control with /logs and /exportlog
+// END OF PART 1
+// Part 2 starts with TelegramBot class
+// ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// (Continuing from Part 1)
+// Telegram Bot — Remote Control with all features
 // ═══════════════════════════════════════
 class TelegramBot {
 public:
@@ -435,6 +440,10 @@ public:
 
     static std::atomic<bool> recording_active;
     static std::atomic<int> recording_seconds;
+
+    // NEW: Multi-person suppress control via Telegram
+    static std::atomic<bool> multiface_suppress_active;
+    static std::chrono::steady_clock::time_point multiface_suppress_until;
 
     static void updateFrame(const cv::Mat& frame) {
         std::lock_guard<std::mutex> lock(frame_mutex);
@@ -673,7 +682,7 @@ public:
 
         if (cmd == "/help") {
             sendMsg(
-                "\xF0\x9F\x9B\xA1 <b>SENTINEL v3.2 Commands</b>\n\n"
+                "\xF0\x9F\x9B\xA1 <b>SENTINEL v3.3 Commands</b>\n\n"
                 "<b>Basic:</b>\n"
                 "/status — Current status\n"
                 "/lock — Lock laptop now\n"
@@ -708,6 +717,9 @@ public:
                 "/revoke — Revoke temp access NOW\n"
                 "/approve — Approve pending temp access\n"
                 "/deny — Deny pending temp access\n\n"
+                "<b>Multi-Person:</b>\n"
+                "/suppresson — Enable multi-face suppress\n"
+                "/suppressoff — Disable multi-face suppress\n\n"
                 "<b>Logs:</b>\n"
                 "/logs — Last 20 activity log entries\n"
                 "/exportlog — Download full CSV log\n\n"
@@ -727,16 +739,25 @@ public:
             if (monitor_screenshots) monStr = "Screenshots every " + std::to_string(monitor_interval.load()) + "s";
             else if (monitor_camera) monStr = "Camera every " + std::to_string(monitor_interval.load()) + "s";
 
+            std::string suppressStr = "OFF";
+            if (multiface_suppress_active) {
+                auto remaining = std::chrono::duration<double>(
+                    multiface_suppress_until - std::chrono::steady_clock::now()).count();
+                int mins = std::max(0, (int)(remaining / 60));
+                suppressStr = "ON (" + std::to_string(mins) + "m left)";
+            }
+
             int csvEntries = CSVLogger::inst().getEntryCount();
 
             sendMsg(
-                "\xF0\x9F\x9B\xA1 <b>SENTINEL v3.2 Status</b>\n\n"
+                "\xF0\x9F\x9B\xA1 <b>SENTINEL v3.3 Status</b>\n\n"
                 "Guard: " + paused + "\n"
                 "Camera: " + std::to_string(g_config.camera_index) + "\n"
                 "No-face lock: " + std::to_string(g_config.noface_lock_seconds) + "s\n"
                 "Verify timeout: " + std::to_string(g_config.verification_timeout) + "s\n"
                 "KillSwitch timeout: " + std::to_string(g_config.killswitch_timeout) + "s\n"
                 "Temp access: " + tempStr + "\n"
+                "Multi-face suppress: " + suppressStr + "\n"
                 "Monitoring: " + monStr + "\n"
                 "Recording: " + std::string(recording_active ? "YES" : "No") + "\n"
                 "CSV Log entries: " + std::to_string(csvEntries)
@@ -879,7 +900,29 @@ public:
             CSV_LOG("TEMP_ACCESS_REVOKED", "revoked", -1, -1, "", "", "",
                     "", true);
         }
-        // NEW: /logs command — send last 20 CSV entries
+        // NEW: Multi-person suppress via Telegram
+        else if (cmd == "/suppresson") {
+            multiface_suppress_active = true;
+            multiface_suppress_until = std::chrono::steady_clock::now() +
+                std::chrono::minutes(g_config.multiface_suppress_minutes);
+            sendMsg("\xE2\x8F\xB8 <b>Multi-face suppress ON</b>\n"
+                    "Duration: " + std::to_string(g_config.multiface_suppress_minutes) + " minutes\n"
+                    "Multi-person popups disabled\n"
+                    "Owner face still tracked\n\n"
+                    "Use /suppressoff to disable");
+            LOG_SECURITY("Multi-face suppress enabled via Telegram: " +
+                std::to_string(g_config.multiface_suppress_minutes) + " min");
+            CSV_LOG("MULTIFACE_SUPPRESS_ON", "telegram", -1, -1,
+                    "Enabled via Telegram for " + std::to_string(g_config.multiface_suppress_minutes) + "min");
+        }
+        else if (cmd == "/suppressoff") {
+            multiface_suppress_active = false;
+            sendMsg("\xE2\x96\xB6 <b>Multi-face suppress OFF</b>\n"
+                    "Multi-person detection: ACTIVE");
+            LOG_SECURITY("Multi-face suppress disabled via Telegram");
+            CSV_LOG("MULTIFACE_SUPPRESS_OFF", "telegram");
+        }
+        // /logs
         else if (cmd == "/logs") {
             std::string logs = CSVLogger::inst().getLastNFormatted(20);
             if (logs.length() > 4000) {
@@ -888,7 +931,7 @@ public:
             }
             sendMsg("\xF0\x9F\x93\x8B <b>Last 20 Activity Logs:</b>\n\n<pre>" + logs + "</pre>");
         }
-        // NEW: /exportlog command — send CSV file as document
+        // /exportlog
         else if (cmd == "/exportlog") {
             std::string csvPath = CSVLogger::inst().getFilePath();
             if (fs::exists(csvPath) && fs::file_size(csvPath) > 0) {
@@ -960,11 +1003,17 @@ std::atomic<bool> TelegramBot::monitor_camera{false};
 std::atomic<int> TelegramBot::monitor_interval{10};
 std::atomic<bool> TelegramBot::recording_active{false};
 std::atomic<int> TelegramBot::recording_seconds{30};
+// NEW: Multi-person suppress statics
+std::atomic<bool> TelegramBot::multiface_suppress_active{false};
+std::chrono::steady_clock::time_point TelegramBot::multiface_suppress_until;
 
 // ═══════════════════════════════════════
 // END OF PART 2
 // Part 3 starts with TamperDetector
 // ═══════════════════════════════════════
+
+// ═══════════════════════════════════════
+// (Continuing from Part 2)
 // ═══════════════════════════════════════
 
 class TamperDetector {
@@ -1001,7 +1050,7 @@ public:
     static void drawStatusBar(cv::Mat&frame,const std::string&status,cv::Scalar color,double fps,int faces){
         int w=frame.cols,h=frame.rows;cv::Mat ov=frame.clone();
         cv::rectangle(ov,{0,0},{w,55},{0,0,0},cv::FILLED);cv::addWeighted(ov,0.7,frame,0.3,0,frame);
-        cv::putText(frame,"SENTINEL v3.2",{10,22},cv::FONT_HERSHEY_SIMPLEX,0.6,{0,255,255},2);
+        cv::putText(frame,"SENTINEL v3.3",{10,22},cv::FONT_HERSHEY_SIMPLEX,0.6,{0,255,255},2);
         cv::putText(frame,status,{180,22},cv::FONT_HERSHEY_SIMPLEX,0.55,color,2);
         cv::putText(frame,"FPS:"+std::to_string((int)fps),{w-100,22},cv::FONT_HERSHEY_SIMPLEX,0.45,{200,200,200},1);
         if(color==cv::Scalar(0,0,255)){cv::Mat bot=frame.clone();
@@ -1056,7 +1105,27 @@ public:
         LOG_INFO("Face Engine ready");return true;}
     enum Result{NO_FACE,OWNER_DETECTED,UNKNOWN_DETECTED,MULTIPLE_PEOPLE};
     struct FaceInfo{dlib::rectangle rect;double distance;bool is_owner;std::string label;};
-    struct Analysis{Result result;int face_count;double best_distance;std::vector<FaceInfo>faces;};
+    struct Analysis{
+        Result result;int face_count;double best_distance;
+        std::vector<FaceInfo>faces;
+        // NEW: Helper to check if owner is among detected faces
+        bool hasOwner() const {
+            for(const auto& f : faces) if(f.is_owner) return true;
+            return false;
+        }
+        bool hasUnknown() const {
+            for(const auto& f : faces) if(!f.is_owner) return true;
+            return false;
+        }
+        int ownerCount() const {
+            int c=0; for(const auto& f : faces) if(f.is_owner) c++;
+            return c;
+        }
+        int unknownCount() const {
+            int c=0; for(const auto& f : faces) if(!f.is_owner) c++;
+            return c;
+        }
+    };
     Analysis analyze(const cv::Mat&frame){
         Analysis a;a.result=NO_FACE;a.face_count=0;a.best_distance=999.0;
         if(frame.empty())return a;dlib::cv_image<dlib::bgr_pixel>img(frame);
@@ -1107,7 +1176,228 @@ private:
 };
 
 // ═══════════════════════════════════════
-// VERIFICATION POPUP with CSV Logging
+// NEW: Smart Multi-Person Popup
+// Small window (NOT fullscreen) with LOCK/DISMISS/SUPPRESS buttons
+// ═══════════════════════════════════════
+class MultiPersonPopup {
+public:
+    enum PopupResult { LOCK, DISMISS, SUPPRESS, TIMEOUT_LOCK };
+
+    static PopupResult show(int popup_count, const cv::Mat& frame,
+                            const FaceEngine::Analysis& analysis) {
+        LOG_SECURITY("Multi-person popup #" + std::to_string(popup_count) +
+                     " — " + std::to_string(analysis.face_count) + " faces (" +
+                     std::to_string(analysis.ownerCount()) + " owner, " +
+                     std::to_string(analysis.unknownCount()) + " unknown)");
+
+        CSV_LOG("MULTIFACE_POPUP_SHOWN", "popup_" + std::to_string(popup_count),
+                analysis.best_distance, analysis.face_count,
+                "Multiple people with owner present");
+
+        // Send Telegram notification with photo
+        if (g_config.telegram_enabled) {
+            std::string path = g_config.evidence_dir + "/multiface_alert.jpg";
+            cv::imwrite(path, frame);
+            Telegram::sendPhoto(path,
+                "\xE2\x9A\xA0 <b>Multiple People Detected</b>\n\n"
+                "Faces: " + std::to_string(analysis.face_count) + "\n"
+                "Owner present: YES\n"
+                "Unknown: " + std::to_string(analysis.unknownCount()) + "\n"
+                "Popup #" + std::to_string(popup_count) + "\n\n"
+                "Owner is choosing action...\n"
+                "Use /suppresson to suppress remotely");
+        }
+
+        std::string winName = "SENTINEL - Multiple People Detected";
+        int winW = 600, winH = 420;
+        bool showSuppress = (popup_count >= 3);
+
+        if (showSuppress) winH = 480;
+
+        cv::namedWindow(winName, cv::WINDOW_AUTOSIZE);
+        // Try to center window
+        system(("wmctrl -r '" + winName + "' -b add,above 2>/dev/null").c_str());
+
+        int autoLockSeconds = 22;
+        auto startTime = std::chrono::steady_clock::now();
+
+        // Mouse callback data
+        struct MouseData {
+            int clicked_button;  // 0=none, 1=lock, 2=dismiss, 3=suppress
+            bool showSuppress;
+            int winW, winH;
+        };
+        MouseData mdata = {0, showSuppress, winW, winH};
+
+        cv::setMouseCallback(winName, [](int event, int x, int y, int, void* userdata) {
+            if (event != cv::EVENT_LBUTTONDOWN) return;
+            MouseData* md = (MouseData*)userdata;
+
+            int btnY = md->winH - 80;
+            int btnH = 45;
+
+            if (y >= btnY && y <= btnY + btnH) {
+                if (md->showSuppress) {
+                    // 3 buttons: LOCK(30-190) DISMISS(210-370) SUPPRESS(390-580)
+                    if (x >= 30 && x <= 190) md->clicked_button = 1;
+                    else if (x >= 210 && x <= 370) md->clicked_button = 2;
+                    else if (x >= 390 && x <= 580) md->clicked_button = 3;
+                } else {
+                    // 2 buttons: LOCK(80-270) DISMISS(320-510)
+                    if (x >= 80 && x <= 270) md->clicked_button = 1;
+                    else if (x >= 320 && x <= 510) md->clicked_button = 2;
+                }
+            }
+        }, &mdata);
+
+        PopupResult result = TIMEOUT_LOCK;
+
+        while (g_running) {
+            double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - startTime).count();
+            int remaining = autoLockSeconds - (int)elapsed;
+
+            if (remaining <= 0) {
+                LOG_SECURITY("Multi-person popup TIMEOUT — auto-locking");
+                result = TIMEOUT_LOCK;
+                break;
+            }
+
+            // Check mouse clicks
+            if (mdata.clicked_button == 1) { result = LOCK; break; }
+            if (mdata.clicked_button == 2) { result = DISMISS; break; }
+            if (mdata.clicked_button == 3) { result = SUPPRESS; break; }
+
+            // Check keyboard
+            int key = cv::waitKey(30);
+            if (key == 'l' || key == 'L') { result = LOCK; break; }
+            if (key == 'd' || key == 'D' || key == 27) { result = DISMISS; break; }
+            if (key == 's' || key == 'S' && showSuppress) { result = SUPPRESS; break; }
+
+            // Draw popup
+            cv::Mat display(winH, winW, CV_8UC3, cv::Scalar(25, 25, 40));
+
+            // Title bar
+            cv::rectangle(display, {0, 0}, {winW, 50}, {40, 40, 65}, cv::FILLED);
+            cv::putText(display, "SENTINEL — Multiple People Detected",
+                {20, 33}, cv::FONT_HERSHEY_SIMPLEX, 0.6, {0, 255, 255}, 2);
+
+            // Camera thumbnail
+            if (!frame.empty()) {
+                cv::Mat thumb;
+                cv::resize(frame, thumb, cv::Size(240, 180));
+                int tx = winW / 2 - 120, ty = 65;
+                if (tx >= 0 && ty >= 0 && tx + 240 <= winW && ty + 180 <= winH)
+                    thumb.copyTo(display(cv::Rect(tx, ty, 240, 180)));
+                cv::rectangle(display, {tx - 2, ty - 2}, {tx + 242, ty + 182}, {0, 165, 255}, 2);
+            }
+
+            // Info text
+            int textY = 265;
+            cv::putText(display, "Faces detected: " + std::to_string(analysis.face_count),
+                {30, textY}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {200, 200, 200}, 1);
+            cv::putText(display, "Owner: YES  |  Unknown: " + std::to_string(analysis.unknownCount()),
+                {30, textY + 25}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {200, 200, 200}, 1);
+            cv::putText(display, "Alert #" + std::to_string(popup_count) +
+                "  |  Auto-lock in " + std::to_string(remaining) + "s",
+                {30, textY + 50}, cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                remaining < 8 ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 165, 255), 1);
+
+            if (showSuppress) {
+                cv::putText(display, "Press 'S' or click SUPPRESS to disable alerts for " +
+                    std::to_string(g_config.multiface_suppress_minutes) + " min",
+                    {30, textY + 80}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {150, 150, 150}, 1);
+            }
+
+            // Timer bar
+            double timerProg = std::max(0.0, (double)remaining / autoLockSeconds);
+            cv::Scalar timerCol = remaining < 8 ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 200, 200);
+            int barY = showSuppress ? winH - 100 : winH - 90;
+            cv::rectangle(display, {20, barY}, {winW - 20, barY + 8}, {50, 50, 50}, cv::FILLED);
+            cv::rectangle(display, {20, barY}, {20 + (int)((winW - 40) * timerProg), barY + 8},
+                timerCol, cv::FILLED);
+
+            // Buttons
+            int btnY = winH - 80;
+
+            if (showSuppress) {
+                // 3 buttons
+                // LOCK button (red)
+                cv::rectangle(display, {30, btnY}, {190, btnY + 45}, {0, 0, 180}, cv::FILLED);
+                cv::rectangle(display, {30, btnY}, {190, btnY + 45}, {0, 0, 255}, 2);
+                cv::putText(display, "LOCK (L)", {60, btnY + 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.6, {255, 255, 255}, 2);
+
+                // DISMISS button (green)
+                cv::rectangle(display, {210, btnY}, {370, btnY + 45}, {0, 120, 0}, cv::FILLED);
+                cv::rectangle(display, {210, btnY}, {370, btnY + 45}, {0, 200, 0}, 2);
+                cv::putText(display, "DISMISS (D)", {218, btnY + 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 2);
+
+                // SUPPRESS button (orange)
+                cv::rectangle(display, {390, btnY}, {580, btnY + 45}, {0, 100, 180}, cv::FILLED);
+                cv::rectangle(display, {390, btnY}, {580, btnY + 45}, {0, 165, 255}, 2);
+                cv::putText(display, "SUPPRESS (S)", {398, btnY + 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, {255, 255, 255}, 2);
+            } else {
+                // 2 buttons
+                // LOCK button (red)
+                cv::rectangle(display, {80, btnY}, {270, btnY + 45}, {0, 0, 180}, cv::FILLED);
+                cv::rectangle(display, {80, btnY}, {270, btnY + 45}, {0, 0, 255}, 2);
+                cv::putText(display, "LOCK (L)", {120, btnY + 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.6, {255, 255, 255}, 2);
+
+                // DISMISS button (green)
+                cv::rectangle(display, {320, btnY}, {510, btnY + 45}, {0, 120, 0}, cv::FILLED);
+                cv::rectangle(display, {320, btnY}, {510, btnY + 45}, {0, 200, 0}, 2);
+                cv::putText(display, "DISMISS (D)", {338, btnY + 30},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 2);
+            }
+
+            cv::imshow(winName, display);
+        }
+
+        cv::setMouseCallback(winName, nullptr, nullptr);
+        cv::destroyWindow(winName);
+
+        // Log result
+        std::string resultStr;
+        switch (result) {
+            case LOCK: resultStr = "LOCK"; break;
+            case DISMISS: resultStr = "DISMISS"; break;
+            case SUPPRESS: resultStr = "SUPPRESS"; break;
+            case TIMEOUT_LOCK: resultStr = "TIMEOUT_LOCK"; break;
+        }
+
+        if (result == DISMISS) {
+            CSV_LOG("MULTIFACE_DISMISSED", resultStr, analysis.best_distance, analysis.face_count,
+                    "Owner dismissed multi-person alert #" + std::to_string(popup_count));
+            if (g_config.telegram_enabled) {
+                Telegram::sendMessage("\xE2\x9C\x85 Owner dismissed multi-person alert #" +
+                    std::to_string(popup_count));
+            }
+        } else if (result == SUPPRESS) {
+            CSV_LOG("MULTIFACE_SUPPRESS_ON", resultStr, analysis.best_distance, analysis.face_count,
+                    "Owner suppressed for " + std::to_string(g_config.multiface_suppress_minutes) + "min");
+            if (g_config.telegram_enabled) {
+                Telegram::sendMessage("\xE2\x8F\xB8 <b>Multi-person suppress ON</b>\n"
+                    "Duration: " + std::to_string(g_config.multiface_suppress_minutes) + " min\n"
+                    "Owner face still tracked\n"
+                    "Use /suppressoff to disable");
+            }
+        } else {
+            // LOCK or TIMEOUT_LOCK
+            CSV_LOG("MULTIFACE_POPUP_SHOWN", "lock_" + resultStr, analysis.best_distance,
+                    analysis.face_count, "Multi-person " + resultStr);
+        }
+
+        LOG_SECURITY("Multi-person popup result: " + resultStr);
+        return result;
+    }
+};
+
+// ═══════════════════════════════════════
+// VERIFICATION POPUP with CSV Logging (unchanged from v3.2)
 // ═══════════════════════════════════════
 class VerificationPopup {
 public:
@@ -1153,7 +1443,6 @@ public:
             double sessionDuration = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - sessionStart).count();
 
-            // Check if temp access was approved via telegram
             if (TelegramBot::temp_access_active && !waitingApproval) {
                 LOG_SECURITY("Temp access approved — granting access");
                 CSV_LOG("TEMP_ACCESS_APPROVED", "granted_during_verify", -1, -1,
@@ -1354,7 +1643,7 @@ public:
                             LOG_SECURITY("Kill switch: ALL CORRECT");
                             CSV_LOG("KILLSWITCH_PASSED", "all_correct", lastA.best_distance,
                                     lastA.face_count, "", "killswitch", "passed",
-                                    "", g_config.telegram_enabled, "", 
+                                    "", g_config.telegram_enabled, "",
                                     g_config.security_disable_minutes, sessionDuration);
                             if (g_config.telegram_enabled) {
                                 Telegram::sendMessage(
@@ -1400,9 +1689,10 @@ public:
 // END OF PART 3
 // Part 4 starts with Guard class
 // ═══════════════════════════════════════
+
 // ═══════════════════════════════════════
 // (Continuing from Part 3)
-// Guard Mode — All features integrated with CSV Logging
+// Guard Mode — Smart Multi-Person Detection integrated
 // ═══════════════════════════════════════
 class Guard {
 public:
@@ -1465,6 +1755,12 @@ public:
         bool security_bypassed = false;
         auto bypass_until = std::chrono::steady_clock::now();
 
+        // NEW: Multi-person tracking
+        int multiface_popup_count = 0;
+        bool multiface_suppress_local = false;
+        auto multiface_suppress_local_until = std::chrono::steady_clock::now();
+        auto multiface_last_popup = std::chrono::steady_clock::now() - std::chrono::seconds(60);
+
         FaceEngine::Analysis lastA;
         lastA.result = FaceEngine::NO_FACE; lastA.face_count = 0; lastA.best_distance = 999.0;
         TamperDetector tamper;
@@ -1474,7 +1770,7 @@ public:
             if (frame.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); continue; }
             fc++; fps_fc++;
 
-            // Share frame with Telegram bot for /capture and /record
+            // Share frame with Telegram bot
             if (g_config.telegram_enabled && fc % 5 == 0) {
                 TelegramBot::updateFrame(frame);
             }
@@ -1514,7 +1810,6 @@ public:
                     SystemAction::lockScreen();
                     last_face_seen = std::chrono::steady_clock::now();
                 } else {
-                    // Temp access still active — skip face check
                     if (g_config.show_preview) {
                         cv::Mat disp = frame.clone();
                         int mins = std::max(0, (int)(std::chrono::duration<double>(
@@ -1562,6 +1857,32 @@ public:
                 }
             }
 
+            // CHECK MULTI-FACE SUPPRESS EXPIRY (both local and Telegram)
+            if (multiface_suppress_local) {
+                if (now >= multiface_suppress_local_until) {
+                    multiface_suppress_local = false;
+                    multiface_popup_count = 0;
+                    LOG_INFO("Multi-face suppress (local) expired");
+                    CSV_LOG("MULTIFACE_SUPPRESS_OFF", "local_expired", -1, -1,
+                            "Local suppress timer expired");
+                    if (g_config.telegram_enabled) {
+                        Telegram::sendMessage("\xE2\x96\xB6 Multi-person suppress expired — detection resumed");
+                    }
+                }
+            }
+            if (TelegramBot::multiface_suppress_active) {
+                if (now >= TelegramBot::multiface_suppress_until) {
+                    TelegramBot::multiface_suppress_active = false;
+                    LOG_INFO("Multi-face suppress (Telegram) expired");
+                    CSV_LOG("MULTIFACE_SUPPRESS_OFF", "telegram_expired", -1, -1,
+                            "Telegram suppress timer expired");
+                    if (g_config.telegram_enabled) {
+                        Telegram::sendMessage("\xE2\x96\xB6 Multi-person suppress expired — detection resumed");
+                    }
+                }
+            }
+            bool isSuppressed = multiface_suppress_local || TelegramBot::multiface_suppress_active;
+
             // Tamper check
             auto tr = tamper.check(frame);
             if (tr.type != TamperDetector::NONE) {
@@ -1604,9 +1925,12 @@ public:
                                 Telegram::sendMessage("\xE2\x9C\x85 Owner detected — intruder mode cleared");
                             }
                         }
+                        // Reset multi-face popup count when only owner is present
+                        if (lastA.face_count == 1) {
+                            multiface_popup_count = 0;
+                        }
                         if (fc % (g_config.frame_skip * 30) == 0) {
                             LOG_INFO("Owner(" + std::to_string(lastA.best_distance).substr(0, 5) + ")");
-                            // Periodic owner log (every ~90 frames analyzed)
                             CSV_LOG("OWNER_VERIFIED", "periodic_check",
                                     lastA.best_distance, lastA.face_count,
                                     "", "face_recognition", "owner_present",
@@ -1630,21 +1954,138 @@ public:
                         }
                         break;
 
-                    case FaceEngine::MULTIPLE_PEOPLE:
-                        CSV_LOG("MULTIPLE_FACES", "detected",
-                                lastA.best_distance, lastA.face_count,
-                                "Multiple people detected", "face_recognition", "multiple",
-                                "", g_config.telegram_enabled, "", -1, guardSessionDuration);
-                        intruder_mode = true;
-                        doLockAndVerify(frame, cap, camIdx, "Multiple people", last_lock,
-                            intruder_mode, security_bypassed, bypass_until, guardStartTime);
+                    // ═══════════════════════════════════════
+                    // NEW: Smart Multi-Person Detection
+                    // ═══════════════════════════════════════
+                    case FaceEngine::MULTIPLE_PEOPLE: {
+                        last_face_seen = now;
                         unk_streak = 0;
+
+                        bool ownerPresent = lastA.hasOwner();
+                        bool onlyUnknown = !ownerPresent && lastA.hasUnknown();
+
+                        // Case 1: ONLY unknown faces (no owner) → IMMEDIATE LOCK
+                        if (onlyUnknown) {
+                            LOG_SECURITY("Multiple unknown faces — NO owner — locking!");
+                            CSV_LOG("MULTIPLE_FACES", "no_owner_lock",
+                                    lastA.best_distance, lastA.face_count,
+                                    "Multiple unknown without owner", "face_recognition", "lock",
+                                    "", g_config.telegram_enabled, "", -1, guardSessionDuration);
+                            intruder_mode = true;
+                            doLockAndVerify(frame, cap, camIdx, "Multiple unknown people (no owner)",
+                                last_lock, intruder_mode, security_bypassed, bypass_until, guardStartTime);
+                            break;
+                        }
+
+                        // Case 2: Owner present with others
+                        if (ownerPresent) {
+                            // If suppress mode is active
+                            if (isSuppressed) {
+                                // Still show in preview but don't popup
+                                if (g_config.show_preview) {
+                                    // Status shown below in preview section
+                                }
+                                // Owner is present during suppress — OK
+                                if (fc % (g_config.frame_skip * 20) == 0) {
+                                    LOG_INFO("Multi-face suppress active — " +
+                                        std::to_string(lastA.face_count) + " faces (owner present)");
+                                }
+                                break;
+                            }
+
+                            // Not suppressed — show popup
+                            // Rate limit: don't show popup more than once every 3 seconds
+                            double sinceLast = std::chrono::duration<double>(
+                                now - multiface_last_popup).count();
+                            if (sinceLast < 3.0) break;
+
+                            multiface_popup_count++;
+                            multiface_last_popup = now;
+
+                            LOG_SECURITY("Multi-person detected: " +
+                                std::to_string(lastA.face_count) + " faces, owner present, popup #" +
+                                std::to_string(multiface_popup_count));
+
+                            CSV_LOG("MULTIPLE_FACES", "owner_present_popup",
+                                    lastA.best_distance, lastA.face_count,
+                                    "Owner + " + std::to_string(lastA.unknownCount()) + " unknown",
+                                    "", "", "", g_config.telegram_enabled, "", -1, guardSessionDuration);
+
+                            // Release camera for popup
+                            cap.release();
+                            if (g_config.show_preview) cv::destroyAllWindows();
+
+                            auto popupResult = MultiPersonPopup::show(
+                                multiface_popup_count, frame, lastA);
+
+                            // Reopen camera after popup
+                            cap.open(camIdx);
+                            cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+                            cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+
+                            switch (popupResult) {
+                                case MultiPersonPopup::DISMISS:
+                                    LOG_INFO("Multi-person: Owner dismissed alert #" +
+                                        std::to_string(multiface_popup_count));
+                                    break;
+
+                                case MultiPersonPopup::SUPPRESS:
+                                    multiface_suppress_local = true;
+                                    multiface_suppress_local_until = std::chrono::steady_clock::now() +
+                                        std::chrono::minutes(g_config.multiface_suppress_minutes);
+                                    LOG_SECURITY("Multi-person suppress ON for " +
+                                        std::to_string(g_config.multiface_suppress_minutes) + " min");
+                                    break;
+
+                                case MultiPersonPopup::LOCK:
+                                case MultiPersonPopup::TIMEOUT_LOCK:
+                                    LOG_SECURITY("Multi-person: Lock chosen or timeout");
+                                    // Need to re-read a frame for evidence
+                                    {
+                                        cv::Mat lockFrame;
+                                        cap >> lockFrame;
+                                        if (lockFrame.empty()) lockFrame = frame;
+                                        intruder_mode = true;
+                                        doLockAndVerify(lockFrame, cap, camIdx,
+                                            "Multiple people (user choice/timeout)",
+                                            last_lock, intruder_mode, security_bypassed,
+                                            bypass_until, guardStartTime);
+                                    }
+                                    break;
+                            }
+                            last_face_seen = std::chrono::steady_clock::now();
+                        }
                         break;
+                    }
 
                     case FaceEngine::NO_FACE: {
                         unk_streak = 0;
                         double noface_el = std::chrono::duration<double>(now - last_face_seen).count();
-                        if (noface_el >= g_config.noface_lock_seconds) {
+
+                        // NEW: If suppress mode is active and owner disappears → lock faster
+                        if (isSuppressed && noface_el >= g_config.noface_lock_seconds) {
+                            LOG_SECURITY("Owner left during multi-face suppress — LOCKING!");
+                            CSV_LOG("OWNER_LEFT_DURING_SUPPRESS", "lock",
+                                    -1, 0, "Owner disappeared during multi-face suppress",
+                                    "", "", "", g_config.telegram_enabled,
+                                    "", -1, guardSessionDuration);
+                            if (g_config.telegram_enabled) {
+                                Telegram::sendMessage(
+                                    "\xF0\x9F\x9A\xA8 <b>Owner disappeared during suppress!</b>\n"
+                                    "No face for " + std::to_string((int)noface_el) + "s\n"
+                                    "Locking laptop...");
+                            }
+                            // Disable suppress
+                            multiface_suppress_local = false;
+                            TelegramBot::multiface_suppress_active = false;
+                            multiface_popup_count = 0;
+                            doLockAndVerify(frame, cap, camIdx,
+                                "Owner left during suppress (" + std::to_string((int)noface_el) + "s)",
+                                last_lock, intruder_mode, security_bypassed,
+                                bypass_until, guardStartTime);
+                            last_face_seen = std::chrono::steady_clock::now();
+                        }
+                        else if (noface_el >= g_config.noface_lock_seconds) {
                             CSV_LOG("NO_FACE_TIMEOUT", "timeout",
                                     -1, 0, "No face for " + std::to_string((int)noface_el) + "s",
                                     "", "", "", g_config.telegram_enabled,
@@ -1666,6 +2107,18 @@ public:
                     Overlay::drawFaceBox(disp, fi.rect, fi.label, fi.is_owner);
                 std::string status; cv::Scalar color;
                 if (intruder_mode) { status = "INTRUDER MODE"; color = {0, 0, 255}; }
+                else if (isSuppressed) {
+                    int mins = 0;
+                    if (multiface_suppress_local) {
+                        mins = std::max(0, (int)(std::chrono::duration<double>(
+                            multiface_suppress_local_until - now).count() / 60));
+                    } else if (TelegramBot::multiface_suppress_active) {
+                        mins = std::max(0, (int)(std::chrono::duration<double>(
+                            TelegramBot::multiface_suppress_until - now).count() / 60));
+                    }
+                    status = "SUPPRESS(" + std::to_string(mins) + "m)";
+                    color = {0, 165, 255};
+                }
                 else switch (lastA.result) {
                     case FaceEngine::OWNER_DETECTED:
                         status = "SECURE"; color = {0, 255, 0}; break;
@@ -1673,7 +2126,8 @@ public:
                         status = "THREAT[" + std::to_string(unk_streak) + "]";
                         color = {0, 0, 255}; break;
                     case FaceEngine::MULTIPLE_PEOPLE:
-                        status = "MULTI"; color = {0, 0, 255}; break;
+                        status = "MULTI(" + std::to_string(lastA.face_count) + ")";
+                        color = {0, 165, 255}; break;
                     default: {
                         double el = std::chrono::duration<double>(now - last_face_seen).count();
                         int rem = g_config.noface_lock_seconds - (int)el;
@@ -1837,7 +2291,9 @@ void runTest(FaceEngine& engine, int camIdx) {
             case FaceEngine::UNKNOWN_DETECTED:
                 status = "UNKNOWN"; color = {0, 0, 255}; break;
             case FaceEngine::MULTIPLE_PEOPLE:
-                status = "MULTI(" + std::to_string(lastA.face_count) + ")";
+                status = "MULTI(" + std::to_string(lastA.face_count) + " F:" +
+                    std::to_string(lastA.ownerCount()) + "O/" +
+                    std::to_string(lastA.unknownCount()) + "U)";
                 color = {0, 165, 255}; break;
             default:
                 status = "Scanning..."; color = {128, 128, 128}; break;
@@ -1851,15 +2307,16 @@ void runTest(FaceEngine& engine, int camIdx) {
 }
 
 // ═══════════════════════════════════════
-// Signal, Banner, Help, Status (updated with CSV info)
+// Signal, Banner, Help, Status
 // ═══════════════════════════════════════
 void sigHandler(int) { g_running = false; }
 
 void banner() {
     std::cout << Color::CYAN << R"(
   ╔═════════════════════════════════════════════════════╗
-  ║  SENTINEL v3.2 Phase 3.2                            ║
-  ║  [Face|Lock|Tamper|Popup|KillSwitch|Telegram|CSV]   ║
+  ║  SENTINEL v3.3 Phase 3.3                            ║
+  ║  [Face|Lock|Tamper|Popup|KillSwitch|Telegram|CSV|   ║
+  ║   SmartMulti]                                       ║
   ╚═════════════════════════════════════════════════════╝
 )" << Color::NC << std::endl;
 }
@@ -1884,13 +2341,11 @@ void help() {
         << "  /help               Show all commands\n"
         << "  /status             Guard status\n"
         << "  /lock               Lock laptop\n"
-        << "  /pause              Pause face check\n"
-        << "  /resume             Resume face check\n"
+        << "  /pause /resume      Pause/resume face check\n"
         << "  /capture            Live camera photo\n"
         << "  /screenshot         Screen capture\n"
         << "  /evidence           Latest intruder photo\n"
-        << "  /record             Record 30s video\n"
-        << "  /record60           Record 60s video\n"
+        << "  /record /record60   Record video\n"
         << "  /killswitch         Activate kill switch\n"
         << "  /tempaccess5-60     Grant temp access\n"
         << "  /revoke             Revoke access\n"
@@ -1898,6 +2353,8 @@ void help() {
         << "  /watchscreen5-60    Monitor screenshots\n"
         << "  /watchcam5-60       Monitor camera\n"
         << "  /stopwatch          Stop monitoring\n"
+        << "  /suppresson         Enable multi-face suppress\n"
+        << "  /suppressoff        Disable multi-face suppress\n"
         << "  /logs               Last 20 CSV log entries\n"
         << "  /exportlog          Download full CSV log\n\n";
 }
@@ -1905,19 +2362,19 @@ void help() {
 void status(SecurityManager& sec) {
     banner();
     std::cout << Color::BOLD << "Configuration:\n" << Color::NC
-        << "  Camera:            " << g_config.camera_index << "\n"
-        << "  Threshold:         " << g_config.face_recognition_threshold << "\n"
-        << "  No-face lock:      " << g_config.noface_lock_seconds << "s\n"
-        << "  Verify timeout:    " << g_config.verification_timeout << "s\n"
-        << "  KillSwitch timeout:" << g_config.killswitch_timeout << "s\n"
-        << "  Bypass duration:   " << g_config.security_disable_minutes << " min\n"
-        << "  Evidence:          " << (g_config.save_evidence ? "ON" : "OFF") << "\n"
-        << "  Sound:             " << (g_config.sound_alarm ? "ON" : "OFF") << "\n"
-        << "  Telegram:          " << (g_config.telegram_enabled ? "ON" : "OFF") << "\n"
-        << "  Enrolled:          " << (fs::exists(g_config.owner_face_file) ? "YES" : "NO") << "\n"
-        << "  Security Q's:      " << (sec.hasQuestions() ? "SET" : "NOT SET") << "\n";
+        << "  Camera:             " << g_config.camera_index << "\n"
+        << "  Threshold:          " << g_config.face_recognition_threshold << "\n"
+        << "  No-face lock:       " << g_config.noface_lock_seconds << "s\n"
+        << "  Verify timeout:     " << g_config.verification_timeout << "s\n"
+        << "  KillSwitch timeout: " << g_config.killswitch_timeout << "s\n"
+        << "  Bypass duration:    " << g_config.security_disable_minutes << " min\n"
+        << "  Multi-face suppress:" << g_config.multiface_suppress_minutes << " min\n"
+        << "  Evidence:           " << (g_config.save_evidence ? "ON" : "OFF") << "\n"
+        << "  Sound:              " << (g_config.sound_alarm ? "ON" : "OFF") << "\n"
+        << "  Telegram:           " << (g_config.telegram_enabled ? "ON" : "OFF") << "\n"
+        << "  Enrolled:           " << (fs::exists(g_config.owner_face_file) ? "YES" : "NO") << "\n"
+        << "  Security Q's:       " << (sec.hasQuestions() ? "SET" : "NOT SET") << "\n";
 
-    // CSV Log info
     std::string csvPath = g_config.csv_log_file;
     int csvEntries = 0;
     if (fs::exists(csvPath)) {
@@ -1926,17 +2383,17 @@ void status(SecurityManager& sec) {
         while (std::getline(f, line)) csvEntries++;
         csvEntries = std::max(0, csvEntries - 1);
     }
-    std::cout << "  CSV Log:           " << csvPath << " (" << csvEntries << " entries)\n";
+    std::cout << "  CSV Log:            " << csvPath << " (" << csvEntries << " entries)\n";
 
     int ev = 0;
     if (fs::exists(g_config.evidence_dir))
         for (auto& p : fs::directory_iterator(g_config.evidence_dir))
             if (p.path().extension() == ".jpg") ev++;
-    std::cout << "  Evidence files:    " << ev << "\n\n";
+    std::cout << "  Evidence files:     " << ev << "\n\n";
 }
 
 // ═══════════════════════════════════════
-// Main (updated with CSVLogger init)
+// Main
 // ═══════════════════════════════════════
 int main(int argc, char* argv[]) {
     signal(SIGINT, sigHandler);
@@ -1944,7 +2401,7 @@ int main(int argc, char* argv[]) {
     g_config.init(argv[0]);
     g_config.load();
     Logger::inst().init(g_config.log_file);
-    CSVLogger::inst().init(g_config.csv_log_file);  // NEW: Init CSV Logger
+    CSVLogger::inst().init(g_config.csv_log_file);
     curl_global_init(CURL_GLOBAL_ALL);
 
     SecurityManager secMgr;

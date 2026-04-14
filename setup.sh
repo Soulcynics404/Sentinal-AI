@@ -230,6 +230,14 @@ TAMPER_FRAMES=${TAMPER_FRAMES:-30}
 
 echo -e "${GREEN}  ✓ Security settings configured${NC}"
 
+# Multi-person smart detection
+echo ""
+echo -e "${BOLD}Smart multi-person detection:${NC}"
+echo "  When owner is present with others, shows popup instead of instant lock"
+echo "  On 3rd popup, option to suppress alerts for X minutes"
+read -p "  Suppress duration in minutes [default: 20]: " MULTIFACE_SUPPRESS
+MULTIFACE_SUPPRESS=${MULTIFACE_SUPPRESS:-20}
+
 # ═══════════════════════════════════════
 # Step 6: Telegram (Optional)
 # ═══════════════════════════════════════
@@ -320,6 +328,9 @@ killswitch_timeout=${KILLSWITCH_TIMEOUT}
 
 # Bypass duration after kill switch (minutes)
 security_disable_minutes=${BYPASS_MINUTES}
+
+# Multi-person smart detection
+multiface_suppress_minutes=${MULTIFACE_SUPPRESS}
 
 # Telegram
 telegram_enabled=${TELEGRAM_ENABLED}
