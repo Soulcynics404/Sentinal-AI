@@ -120,6 +120,7 @@
 
 <details>
 <summary><b>📐 Click to view architecture flow (text)</b></summary>
+
 ┌──────────────────────────────────────────────────────────────┐
 │               SENTINEL AI v3.3                               │
 │               Personal Security System                       │
